@@ -1,4 +1,7 @@
 # HynConfig
+![GitHub License](https://img.shields.io/github/license/hynmc/hynconfig)
+![Maven Central Version](https://img.shields.io/maven-central/v/io.github.hynmc/hynconfig)
+
 
 HynConfig is a lightweight YAML configuration library for Java 17 Minecraft plugins. It makes it straightforward to create and manage multiple files, define typed keys with defaults, and save settings while retaining the comments and spacing in your YAML files.
 
@@ -15,7 +18,43 @@ HynConfig uses `Path` and has no Bukkit or Paper dependency. Use a plugin's data
 
 ## Installation
 
-HynConfig has not been released to Maven Central yet. Maven Central coordinates and dependency instructions will be added with the first release.
+The artifact coordinates are `io.github.hynmc:hynconfig:0.1.0`. Maven Central search may take some time to index a newly published release. The dependency can be declared as follows once the release is available from Central.
+
+### Gradle (Kotlin DSL)
+
+```kotlin
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("io.github.hynmc:hynconfig:0.1.0")
+}
+```
+
+### Gradle (Groovy)
+
+```groovy
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'io.github.hynmc:hynconfig:0.1.0'
+}
+```
+
+### Maven
+
+```xml
+<dependency>
+    <groupId>io.github.hynmc</groupId>
+    <artifactId>hynconfig</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
+
+HynConfig uses SnakeYAML at runtime; Gradle and Maven will resolve it as a transitive dependency.
 
 ## Quick start
 
