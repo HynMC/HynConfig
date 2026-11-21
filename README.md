@@ -1,55 +1,101 @@
 # HynConfig
 
-HynConfig is a small YAML configuration library for Java 17 Minecraft plugins. It has no Bukkit or Paper dependency; pass the plugin data folder as a `Path`.
+HynConfig is a lightweight YAML configuration library for Java 17 Minecraft plugins. It makes it straightforward to create and manage multiple files, define typed keys with defaults, and save settings while retaining the comments and spacing in your YAML files.
 
-## Multiple files
+HynConfig uses `Path` and has no Bukkit or Paper dependency. Use a plugin's data folder as its root.
 
-```java
-HynConfig configs = HynConfig.create(plugin.getDataFolder().toPath());
-YamlConfig main = configs.yaml("config.yml");
-YamlConfig messages = configs.yaml("messages.yml");
+## Features
 
-main.set(MainConfigKeys.PORT, 25565);
-messages.set(MessagesConfigKeys.PREFIX, "[Server]");
-configs.saveAll();
-```
+- Manage multiple YAML files under one plugin data folder.
+- Create and load each file on first access; save one file or all registered files.
+- Copy a default YAML file from your plugin JAR when the server-side file is missing.
+- Define typed `ConfigKey` values with defaults and nullability.
+- Use dotted paths such as `server.port` for nested YAML mappings.
+- Preserve existing comments, blank lines, inline comments, and line endings for supported edits.
 
-The manager creates and loads each file the first time it is requested. Repeated requests for the same relative path return the same `YamlConfig` instance. Absolute paths and paths that escape the plugin data folder are rejected.
+## Installation
 
-## Copy a default file from the plugin JAR
+HynConfig has not been released to Maven Central yet. Maven Central coordinates and dependency instructions will be added with the first release.
 
-Put `config.yml` in the plugin resources and provide a lazy stream supplier:
+## Quick start
 
-```java
-YamlConfig config = configs.yaml(
-        "config.yml",
-        () -> MyPlugin.class.getResourceAsStream("/config.yml")
-);
-```
-
-The resource is copied only when the target file does not exist. The stream is closed by HynConfig. If the resource is absent, an empty file is created instead.
-
-## Define defaults in code
-
-Keep keys in a class associated with the file they belong to:
+Define keys in a class associated with their configuration file:
 
 ```java
 final class MainConfigKeys {
     static final ConfigKey<Integer> PORT =
             ConfigKey.integer("server.port").defaultValue(25565).build();
+    static final ConfigKey<Boolean> DEBUG =
+            ConfigKey.bool("debug").defaultValue(false).build();
 }
 
-YamlConfig config = configs.yaml("config.yml");
-config.applyDefaults(MainConfigKeys.PORT);
-int port = config.get(MainConfigKeys.PORT);
-config.set(MainConfigKeys.PORT, 25566);
-config.save();
+final class MessageConfigKeys {
+    static final ConfigKey<String> PREFIX =
+            ConfigKey.string("prefix").defaultValue("[Server]").build();
+}
 ```
 
-`get(key)` returns a key's default when the setting is missing, without writing it to disk. `applyDefaults(...)` inserts missing defaults into memory; `save()` or `saveAll()` persists them without overwriting values that are already present.
+Create the manager from your plugin's data folder and request each file by its relative path:
 
-Use `load()` / `save()` for one file or `loadAll()` / `saveAll()` for all registered files. Dotted paths such as `server.port` address nested YAML keys.
+```java
+HynConfig configs = HynConfig.create(getDataFolder().toPath());
+YamlConfig main = configs.yaml("config.yml");
+YamlConfig messages = configs.yaml("messages.yml");
 
-## Formatting preservation
+main.applyDefaults(MainConfigKeys.PORT, MainConfigKeys.DEBUG);
+messages.applyDefaults(MessageConfigKeys.PREFIX);
 
-Saving without changes leaves the source file untouched. Scalar updates, same-length list updates, and added mapping keys are patched into the original text so existing comments, blank lines, inline comments, and line endings stay in place. HynConfig rejects saves that require removing mapping entries, changing list length, or replacing a multiline scalar because those edits cannot currently be applied while guaranteeing the original layout remains intact.
+int port = main.get(MainConfigKeys.PORT);
+main.set(MainConfigKeys.PORT, port + 1);
+messages.set(MessageConfigKeys.PREFIX, "[HynMC]");
+
+configs.saveAll();
+```
+
+The first request creates and loads a missing file. Repeated requests for the same path return the same configuration object. File paths must be relative and remain inside the configured data folder.
+
+`get(key)` returns a key's default when the value is missing, without writing it to disk. `applyDefaults(...)` inserts missing key defaults into memory while leaving existing values untouched; call `save()` or `saveAll()` to persist them.
+
+## Copy a default file from your plugin JAR
+
+Place a template at `src/main/resources/config.yml` and pass a lazy resource supplier:
+
+```java
+YamlConfig config = configs.yaml(
+        "config.yml",
+        () -> getResource("config.yml")
+);
+```
+
+The resource is copied only if the server-side file does not exist. HynConfig closes the stream after copying. If the resource is missing, it creates an empty file instead. Existing files are never overwritten by the template.
+
+Use `applyDefaults(...)` for defaults that you define in Java. You can also combine both approaches: copy a commented template for first-time setup, then apply code defaults for missing keys.
+
+## Load and save
+
+```java
+config.load();       // Reload one file; discards unsaved in-memory changes
+config.save();       // Save one file
+configs.loadAll();   // Reload every registered file
+configs.saveAll();   // Save every registered file
+```
+
+Use `config.get("server.port")`, `config.set("server.port", 25565)`, and `config.contains("server.port")` when you do not need a typed key.
+
+## YAML formatting
+
+Saving without changes leaves the source file untouched. Scalar updates, same-length list updates, and added mapping keys are patched into the original text to preserve existing comments, blank lines, inline comments, and line endings. HynConfig rejects edits that remove mapping entries, change list length, or replace a multiline scalar because those changes cannot currently be made while guaranteeing the original formatting remains intact.
+
+## Build and documentation
+
+```shell
+./gradlew test
+./gradlew javadoc
+./gradlew javadocJar
+```
+
+On Windows, use `gradlew.bat` instead. HTML Javadoc is generated under `build/docs/javadoc`; the Javadoc JAR is written to `build/libs`.
+
+## License
+
+HynConfig is distributed under the [MIT License](LICENSE).

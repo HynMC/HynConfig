@@ -29,3 +29,8 @@ java {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.withType<Javadoc>().configureEach {
+    options.encoding = "UTF-8"
+    exclude("io/github/hynmc/hynconfig/internal/**")
+}

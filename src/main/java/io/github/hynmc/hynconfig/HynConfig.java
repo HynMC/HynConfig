@@ -12,7 +12,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-/** Manages YAML files stored in one plugin data folder. */
+/**
+ * Manages YAML files stored in one plugin data folder.
+ *
+ * <p>Each relative file path is loaded once and cached by this manager. Files are created
+ * automatically when first requested. The class has no Bukkit or Paper dependency; pass the
+ * plugin's data folder as a {@link Path}.
+ *
+ * <pre>{@code
+ * HynConfig configs = HynConfig.create(plugin.getDataFolder().toPath());
+ * YamlConfig config = configs.yaml("config.yml");
+ * }</pre>
+ */
 public final class HynConfig {
 
     private final Path dataFolder;
@@ -22,11 +33,25 @@ public final class HynConfig {
         this.dataFolder = Objects.requireNonNull(dataFolder, "dataFolder").toAbsolutePath().normalize();
     }
 
+    /**
+     * Creates a manager rooted at the given data folder.
+     *
+     * @param dataFolder root directory in which configuration files are stored
+     * @return a new configuration manager
+     * @throws NullPointerException if {@code dataFolder} is {@code null}
+     */
     public static HynConfig create(Path dataFolder) {
         return new HynConfig(dataFolder);
     }
 
-    /** Returns and loads a YAML file, creating it on first access when needed. */
+    /**
+     * Returns and loads a YAML file, creating an empty file on first access when needed.
+     *
+     * @param fileName relative path under this manager's data folder
+     * @return the cached configuration for the path
+     * @throws IllegalArgumentException if the path is absolute, blank, or escapes the data folder
+     * @throws ConfigLoadException if the file cannot be created or parsed
+     */
     public synchronized YamlConfig yaml(String fileName) {
         return yaml(fileName, () -> null);
     }
@@ -34,6 +59,15 @@ public final class HynConfig {
     /**
      * Returns and loads a YAML file, copying a classpath template on first access.
      * The supplier is not invoked when the target file already exists.
+     * The returned stream is closed after it has been copied. If the supplier returns
+     * {@code null}, an empty file is created instead.
+     *
+     * @param fileName relative path under this manager's data folder
+     * @param resourceSupplier lazily supplies the template stream, or {@code null} when absent
+     * @return the cached configuration for the path
+     * @throws NullPointerException if either argument is {@code null}
+     * @throws IllegalArgumentException if the path is absolute, blank, or escapes the data folder
+     * @throws ConfigLoadException if the file cannot be created, copied, or parsed
      */
     public synchronized YamlConfig yaml(String fileName, Supplier<? extends InputStream> resourceSupplier) {
         Path relativePath = Path.of(Objects.requireNonNull(fileName, "fileName"));
@@ -73,19 +107,32 @@ public final class HynConfig {
         });
     }
 
+    /** Reloads every YAML file already registered with this manager. Unsaved in-memory changes are discarded. */
     public synchronized void loadAll() {
         configs.values().forEach(YamlConfig::load);
     }
 
+    /** Saves every YAML file already registered with this manager. */
     public synchronized void saveAll() {
         configs.values().forEach(YamlConfig::save);
     }
 
+    /**
+     * Returns the normalized absolute root directory used by this manager.
+     *
+     * @return the data folder
+     */
     public Path getDataFolder() {
         return dataFolder;
     }
 
-    /** Legacy builder entry point for a standalone YAML file. */
+    /**
+     * Creates a builder for a standalone YAML file without a manager.
+     *
+     * @return a standalone YAML configuration builder
+     * @deprecated Prefer {@link #create(Path)} and {@link #yaml(String)} to manage multiple files.
+     */
+    @Deprecated
     public static YamlConfig.Builder yaml() {
         return YamlConfig.builder();
     }
