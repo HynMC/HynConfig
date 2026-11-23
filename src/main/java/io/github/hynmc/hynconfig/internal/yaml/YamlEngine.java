@@ -1,6 +1,7 @@
 package io.github.hynmc.hynconfig.internal.yaml;
 
 import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.DumperOptions.FlowStyle;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
@@ -174,6 +175,12 @@ public class YamlEngine {
 
     private void addToInsertion(MappingNode parent, String[] path, int prefixLength, Object value,
                                 Map<MappingNode, Map<String, Object>> insertions) {
+        if (parent.getFlowStyle() == FlowStyle.FLOW) {
+            throw new IllegalArgumentException(
+                    "Adding entries to flow-style YAML mappings cannot preserve the original formatting"
+            );
+        }
+
         Map<String, Object> fragment = insertions.computeIfAbsent(parent, ignored -> new LinkedHashMap<>());
         Map<String, Object> current = fragment;
         for (int i = prefixLength; i < path.length - 1; i++) {

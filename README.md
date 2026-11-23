@@ -18,7 +18,7 @@ HynConfig uses `Path` and has no Bukkit or Paper dependency. Use a plugin's data
 
 ## Installation
 
-The artifact coordinates are `io.github.hynmc:hynconfig:0.1.1`. Maven Central search may take some time to index a newly published release. The dependency can be declared as follows once the release is available from Central.
+The artifact coordinates are `io.github.hynmc:hynconfig:0.1.2`. Maven Central search may take some time to index a newly published release. The dependency can be declared as follows once the release is available from Central.
 
 ### Gradle (Kotlin DSL)
 
@@ -28,7 +28,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.hynmc:hynconfig:0.1.1")
+    implementation("io.github.hynmc:hynconfig:0.1.2")
 }
 ```
 
@@ -40,7 +40,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'io.github.hynmc:hynconfig:0.1.1'
+    implementation 'io.github.hynmc:hynconfig:0.1.2'
 }
 ```
 
@@ -50,7 +50,7 @@ dependencies {
 <dependency>
     <groupId>io.github.hynmc</groupId>
     <artifactId>hynconfig</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
@@ -136,7 +136,7 @@ configs.unload("sessions/current.yml");
 
 ## YAML formatting
 
-Saving without changes leaves the source file untouched. Scalar updates, same-length list updates, and added mapping keys are patched into the original text to preserve existing comments, blank lines, inline comments, and line endings. HynConfig rejects edits that remove mapping entries, change list length, or replace a multiline scalar because those changes cannot currently be made while guaranteeing the original formatting remains intact.
+Saving without changes leaves the source file untouched. Scalar updates, same-length list updates, and added mapping keys are patched into the original text to preserve existing comments, blank lines, inline comments, and line endings. Maps and lists returned by `get(path)` are live tracked views, so edits through those collections are included in the next save. HynConfig rejects edits that remove mapping entries, change list length, add entries to flow-style mappings, or replace a multiline scalar because those changes cannot currently be made while guaranteeing the original formatting remains intact. A rejected save leaves the source file unchanged.
 
 ## Build and documentation
 

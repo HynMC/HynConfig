@@ -7,11 +7,17 @@ import io.github.hynmc.hynconfig.internal.yaml.YamlEngine;
 import io.github.hynmc.hynconfig.key.ConfigKey;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
+import java.util.AbstractList;
+import java.util.AbstractMap;
+import java.util.AbstractSet;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashSet;
@@ -144,6 +150,11 @@ public class YamlConfig {
         }
 
         if (!key.type().isInstance(value)) {
+            Object convertedValue = convertNumericValue(key.type(), value);
+            if (convertedValue != null) {
+                return key.type().cast(convertedValue);
+            }
+
             throw new ConfigTypeException(
                     "Invalid type for configuration value: " + key.path() +
                             ", expected: " + key.type().getName() +
@@ -285,9 +296,10 @@ public class YamlConfig {
 
     /**
      * Gets a value by a dotted YAML path.
+     * Maps and lists are live views; mutating them marks the containing path as changed.
      *
      * @param key dotted path such as {@code server.port}
-     * @return the value, or {@code null} if absent
+     * @return the value, a tracked map/list view, or {@code null} if absent
      * @throws IllegalArgumentException if the path is null, blank, or contains an empty segment
      */
     public Object get(String key) {
@@ -300,7 +312,7 @@ public class YamlConfig {
             }
             current = castMap(childMap);
         }
-        return current.get(parts.get(parts.size() - 1));
+        return trackedValue(current.get(parts.get(parts.size() - 1)), key);
     }
 
     /**
@@ -376,6 +388,212 @@ public class YamlConfig {
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) map;
         return result;
+    }
+
+    private static List<Object> castList(List<?> list) {
+        @SuppressWarnings("unchecked")
+        List<Object> result = (List<Object>) list;
+        return result;
+    }
+
+    private static Object convertNumericValue(Class<?> targetType, Object value) {
+        if (!(value instanceof Number number)) {
+            return null;
+        }
+
+        if (targetType == Long.class && value instanceof Integer) {
+            return number.longValue();
+        }
+
+        if (targetType == Double.class && value instanceof Integer) {
+            return number.doubleValue();
+        }
+
+        if (targetType == Double.class && value instanceof Long longValue) {
+            double converted = number.doubleValue();
+            if (new BigDecimal(converted).compareTo(BigDecimal.valueOf(longValue)) == 0) {
+                return converted;
+            }
+        }
+
+        if (targetType == Double.class && value instanceof Float) {
+            return number.doubleValue();
+        }
+
+        if (targetType == Float.class && value instanceof Integer integerValue) {
+            float converted = integerValue.floatValue();
+            if (new BigDecimal((double) converted).compareTo(BigDecimal.valueOf(integerValue)) == 0) {
+                return converted;
+            }
+        }
+
+        if (targetType == Float.class && value instanceof Long longValue) {
+            float converted = longValue.floatValue();
+            if (Float.isFinite(converted)
+                    && new BigDecimal((double) converted).compareTo(BigDecimal.valueOf(longValue)) == 0) {
+                return converted;
+            }
+        }
+
+        if (targetType == Float.class && value instanceof Double doubleValue) {
+            float converted = doubleValue.floatValue();
+            if (!Double.isFinite(doubleValue)
+                    || (Float.isFinite(converted) && (doubleValue == 0.0d || converted != 0.0f))) {
+                return converted;
+            }
+        }
+
+        return null;
+    }
+
+    private Object trackedValue(Object value, String changedPath) {
+        if (value instanceof Map<?, ?> map) {
+            return new TrackedMap(castMap(map), changedPath);
+        }
+        if (value instanceof List<?> list) {
+            return new TrackedList(castList(list), changedPath);
+        }
+        return value;
+    }
+
+    private final class TrackedMap extends AbstractMap<String, Object> {
+        private final Map<String, Object> delegate;
+        private final String changedPath;
+
+        private TrackedMap(Map<String, Object> delegate, String changedPath) {
+            this.delegate = delegate;
+            this.changedPath = changedPath;
+        }
+
+        @Override
+        public Object get(Object key) {
+            return trackedValue(delegate.get(key), changedPath);
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return delegate.containsKey(key);
+        }
+
+        @Override
+        public Object put(String key, Object value) {
+            if (key == null) {
+                throw new IllegalArgumentException("YAML map keys must be strings");
+            }
+            Object previous = delegate.put(key, normalizeValue(value, new IdentityHashMap<>()));
+            trackChangedPath(changedPath);
+            return trackedValue(previous, changedPath);
+        }
+
+        @Override
+        public Object remove(Object key) {
+            if (!delegate.containsKey(key)) {
+                return null;
+            }
+            Object previous = delegate.remove(key);
+            trackChangedPath(changedPath);
+            return trackedValue(previous, changedPath);
+        }
+
+        @Override
+        public void clear() {
+            if (!delegate.isEmpty()) {
+                delegate.clear();
+                trackChangedPath(changedPath);
+            }
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            return new AbstractSet<>() {
+                @Override
+                public Iterator<Entry<String, Object>> iterator() {
+                    Iterator<String> keys = new ArrayList<>(delegate.keySet()).iterator();
+                    return new Iterator<>() {
+                        private String currentKey;
+                        private boolean removable;
+
+                        @Override
+                        public boolean hasNext() {
+                            return keys.hasNext();
+                        }
+
+                        @Override
+                        public Entry<String, Object> next() {
+                            currentKey = keys.next();
+                            removable = true;
+                            String entryKey = currentKey;
+                            return new SimpleEntry<>(entryKey, trackedValue(delegate.get(entryKey), changedPath)) {
+                                @Override
+                                public Object setValue(Object value) {
+                                    Object normalized = normalizeValue(value, new IdentityHashMap<>());
+                                    Object previous = delegate.put(entryKey, normalized);
+                                    super.setValue(trackedValue(normalized, changedPath));
+                                    trackChangedPath(changedPath);
+                                    return trackedValue(previous, changedPath);
+                                }
+                            };
+                        }
+
+                        @Override
+                        public void remove() {
+                            if (!removable) {
+                                throw new IllegalStateException();
+                            }
+                            delegate.remove(currentKey);
+                            removable = false;
+                            trackChangedPath(changedPath);
+                        }
+                    };
+                }
+
+                @Override
+                public int size() {
+                    return delegate.size();
+                }
+            };
+        }
+    }
+
+    private final class TrackedList extends AbstractList<Object> {
+        private final List<Object> delegate;
+        private final String changedPath;
+
+        private TrackedList(List<Object> delegate, String changedPath) {
+            this.delegate = delegate;
+            this.changedPath = changedPath;
+        }
+
+        @Override
+        public Object get(int index) {
+            return trackedValue(delegate.get(index), changedPath);
+        }
+
+        @Override
+        public int size() {
+            return delegate.size();
+        }
+
+        @Override
+        public Object set(int index, Object value) {
+            Object normalized = normalizeValue(value, new IdentityHashMap<>());
+            Object previous = delegate.set(index, normalized);
+            trackChangedPath(changedPath);
+            return trackedValue(previous, changedPath);
+        }
+
+        @Override
+        public void add(int index, Object value) {
+            delegate.add(index, normalizeValue(value, new IdentityHashMap<>()));
+            trackChangedPath(changedPath);
+        }
+
+        @Override
+        public Object remove(int index) {
+            Object previous = delegate.remove(index);
+            trackChangedPath(changedPath);
+            return trackedValue(previous, changedPath);
+        }
     }
 
     private static Object normalizeValue(Object value, IdentityHashMap<Object, Boolean> ancestors) {

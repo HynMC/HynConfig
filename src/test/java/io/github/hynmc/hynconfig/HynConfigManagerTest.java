@@ -13,6 +13,7 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -166,6 +167,87 @@ class HynConfigManagerTest {
         config.set("server.port", "wrong");
         assertThrows(ConfigTypeException.class, () -> config.get(MainConfigKeys.PORT));
         assertThrows(ConfigTypeException.class, () -> config.set(MainConfigKeys.PORT, null));
+    }
+
+    @Test
+    void convertsSnakeYamlNumericValuesToTypedNumericKeys() throws IOException {
+        Path path = tempDir.resolve("numbers.yml");
+        Files.writeString(path,
+                "small: 10000\nfraction: 1.25\nwholeFraction: 1\n" +
+                        "wholeFloat: 16777216\nimpreciseFloat: 16777217\n" +
+                        "impreciseLong: 9007199254740993\ntooLargeFloat: 1.0e100\n");
+        YamlConfig config = YamlConfig.builder().path(path).build();
+        config.load();
+
+        ConfigKey<Long> longKey = ConfigKey.longValue("small").build();
+        ConfigKey<Float> floatKey = ConfigKey.floatValue("fraction").build();
+        ConfigKey<Double> doubleKey = ConfigKey.doubleValue("wholeFraction").build();
+        ConfigKey<Float> wholeFloatKey = ConfigKey.floatValue("wholeFloat").build();
+        ConfigKey<Float> impreciseFloatKey = ConfigKey.floatValue("impreciseFloat").build();
+        ConfigKey<Double> impreciseLongKey = ConfigKey.doubleValue("impreciseLong").build();
+        ConfigKey<Float> tooLargeFloatKey = ConfigKey.floatValue("tooLargeFloat").build();
+
+        assertEquals(10000L, config.get(longKey));
+        assertEquals(1.25f, config.get(floatKey));
+        assertEquals(1.0d, config.get(doubleKey));
+        assertEquals(16777216.0f, config.get(wholeFloatKey));
+        assertThrows(ConfigTypeException.class, () -> config.get(impreciseFloatKey));
+        assertThrows(ConfigTypeException.class, () -> config.get(impreciseLongKey));
+        assertThrows(ConfigTypeException.class, () -> config.get(tooLargeFloatKey));
+    }
+
+    @Test
+    void tracksMutationsMadeThroughReturnedMapsAndLists() throws IOException {
+        String template = "settings:\n  enabled: false\n  values:\n    - first\n    - second # keep comment\n";
+        Path path = tempDir.resolve("tracked.yml");
+        Files.writeString(path, template);
+        YamlConfig config = YamlConfig.builder().path(path).build();
+        config.load();
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> settings = (Map<String, Object>) config.get("settings");
+        settings.put("enabled", true);
+        @SuppressWarnings("unchecked")
+        List<Object> values = (List<Object>) settings.get("values");
+        values.set(1, "updated");
+
+        config.save();
+
+        String saved = Files.readString(path);
+        assertTrue(saved.contains("enabled: true"), saved);
+        assertTrue(saved.contains("- updated # keep comment"), saved);
+    }
+
+    @Test
+    void rejectsUnsupportedCollectionStructureChangesWithoutOverwritingFile() throws IOException {
+        String original = "items:\n  - first\n";
+        Path path = tempDir.resolve("list-structure.yml");
+        Files.writeString(path, original);
+        YamlConfig config = YamlConfig.builder().path(path).build();
+        config.load();
+
+        @SuppressWarnings("unchecked")
+        List<Object> items = (List<Object>) config.get("items");
+        items.add("second");
+
+        assertThrows(ConfigSaveException.class, config::save);
+        assertEquals(original, Files.readString(path));
+    }
+
+    @Test
+    void rejectsAddingEntriesToFlowMappingsWithoutCorruptingTheFile() throws IOException {
+        String original = "settings: {foo: 1, bar: 2}\n";
+        Path path = tempDir.resolve("flow.yml");
+        Files.writeString(path, original);
+        YamlConfig config = YamlConfig.builder().path(path).build();
+        config.load();
+        config.set("settings.baz", 3);
+
+        assertThrows(ConfigSaveException.class, config::save);
+        assertEquals(original, Files.readString(path));
+        YamlConfig reloaded = YamlConfig.builder().path(path).build();
+        reloaded.load();
+        assertEquals(1, reloaded.get("settings.foo"));
     }
 
     @Test
