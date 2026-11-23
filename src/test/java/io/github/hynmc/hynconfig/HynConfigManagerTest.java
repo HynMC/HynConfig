@@ -135,6 +135,24 @@ class HynConfigManagerTest {
     }
 
     @Test
+    void savesAndRemovesYamlFromCacheWhenUnloading() throws IOException {
+        String template = "# Header\n\nvalue: 1 # keep comment\n";
+        HynConfig manager = HynConfig.create(tempDir);
+        YamlConfig config = manager.yaml("nested/settings.yml", () -> new ByteArrayInputStream(
+                template.getBytes(StandardCharsets.UTF_8)));
+        config.set("value", 2);
+
+        assertTrue(manager.unload("nested/./settings.yml"));
+        assertFalse(manager.unload("nested/settings.yml"));
+        assertEquals(template.replace("value: 1", "value: 2"),
+                Files.readString(tempDir.resolve("nested/settings.yml")));
+
+        YamlConfig reloaded = manager.yaml("nested/settings.yml");
+        assertNotSame(config, reloaded);
+        assertEquals(2, reloaded.get("value"));
+    }
+
+    @Test
     void supportsDefaultsNullabilityAndTypeChecks() {
         YamlConfig config = HynConfig.create(tempDir).yaml("config.yml");
         ConfigKey<String> nullable = ConfigKey.string("optional")

@@ -2,6 +2,7 @@ package io.github.hynmc.hynconfig;
 
 import io.github.hynmc.hynconfig.config.YamlConfig;
 import io.github.hynmc.hynconfig.exception.ConfigLoadException;
+import io.github.hynmc.hynconfig.exception.ConfigSaveException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -70,16 +71,8 @@ public final class HynConfig {
      * @throws ConfigLoadException if the file cannot be created, copied, or parsed
      */
     public synchronized YamlConfig yaml(String fileName, Supplier<? extends InputStream> resourceSupplier) {
-        Path relativePath = Path.of(Objects.requireNonNull(fileName, "fileName"));
         Objects.requireNonNull(resourceSupplier, "resourceSupplier");
-        if (relativePath.isAbsolute() || relativePath.toString().isBlank()) {
-            throw new IllegalArgumentException("YAML file path must be a non-empty relative path");
-        }
-
-        Path normalized = relativePath.normalize();
-        if (normalized.startsWith("..")) {
-            throw new IllegalArgumentException("YAML file path must stay inside the data folder");
-        }
+        Path normalized = normalizeRelativePath(fileName);
 
         return configs.computeIfAbsent(normalized, path -> {
             Path target = dataFolder.resolve(path);
@@ -105,6 +98,43 @@ public final class HynConfig {
             config.load();
             return config;
         });
+    }
+
+    /**
+     * Saves and removes a previously loaded YAML file from this manager's cache.
+     * The file remains on disk. If saving fails, the configuration stays cached.
+     * Any references to the returned {@link YamlConfig} held by the caller remain valid;
+     * discard those references as well when unloading large numbers of files.
+     *
+     * @param fileName relative path used to load the YAML file
+     * @return {@code true} if a cached configuration was saved and removed, or {@code false} if it was not cached
+     * @throws IllegalArgumentException if the path is absolute, blank, or escapes the data folder
+     * @throws NullPointerException if {@code fileName} is {@code null}
+     * @throws ConfigSaveException if saving the configuration fails
+     */
+    public synchronized boolean unload(String fileName) {
+        Path normalized = normalizeRelativePath(fileName);
+        YamlConfig config = configs.get(normalized);
+        if (config == null) {
+            return false;
+        }
+
+        config.save();
+        configs.remove(normalized);
+        return true;
+    }
+
+    private static Path normalizeRelativePath(String fileName) {
+        Path relativePath = Path.of(Objects.requireNonNull(fileName, "fileName"));
+        if (relativePath.isAbsolute() || relativePath.toString().isBlank()) {
+            throw new IllegalArgumentException("YAML file path must be a non-empty relative path");
+        }
+
+        Path normalized = relativePath.normalize();
+        if (normalized.startsWith("..")) {
+            throw new IllegalArgumentException("YAML file path must stay inside the data folder");
+        }
+        return normalized;
     }
 
     /** Reloads every YAML file already registered with this manager. Unsaved in-memory changes are discarded. */

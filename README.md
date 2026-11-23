@@ -18,7 +18,7 @@ HynConfig uses `Path` and has no Bukkit or Paper dependency. Use a plugin's data
 
 ## Installation
 
-The artifact coordinates are `io.github.hynmc:hynconfig:0.1.0`. Maven Central search may take some time to index a newly published release. The dependency can be declared as follows once the release is available from Central.
+The artifact coordinates are `io.github.hynmc:hynconfig:0.1.1`. Maven Central search may take some time to index a newly published release. The dependency can be declared as follows once the release is available from Central.
 
 ### Gradle (Kotlin DSL)
 
@@ -28,7 +28,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.hynmc:hynconfig:0.1.0")
+    implementation("io.github.hynmc:hynconfig:0.1.1")
 }
 ```
 
@@ -40,7 +40,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'io.github.hynmc:hynconfig:0.1.0'
+    implementation 'io.github.hynmc:hynconfig:0.1.1'
 }
 ```
 
@@ -50,7 +50,7 @@ dependencies {
 <dependency>
     <groupId>io.github.hynmc</groupId>
     <artifactId>hynconfig</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
 </dependency>
 ```
 
@@ -120,6 +120,19 @@ configs.saveAll();   // Save every registered file
 ```
 
 Use `config.get("server.port")`, `config.set("server.port", 25565)`, and `config.contains("server.port")` when you do not need a typed key.
+
+## Unloading cached files
+
+When a file is no longer needed, unload it to save pending changes and remove it from the manager's cache:
+
+```java
+YamlConfig temporaryConfig = configs.yaml("sessions/current.yml");
+temporaryConfig.set("last-user", "example");
+
+configs.unload("sessions/current.yml");
+```
+
+`unload(path)` saves the cached file before removing it from the manager; the YAML file remains on disk. It returns `false` if the file is not currently cached. If your code holds a reference to the unloaded `YamlConfig`, discard it too and request the file again when needed.
 
 ## YAML formatting
 
